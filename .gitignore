@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+vanguard-sports/node_modules/
+vanguard-backend/node_modules/
+
+# Production builds
+vanguard-sports/dist/
+vanguard-sports/.vite/
+
+# Environment files
+.env
+.env.local
+*.env
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Package lock files (optional - team preference)
+vanguard-sports/package-lock.json
+
+# Build files
+*.tsbuildinfo

@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { User, ChevronRight, ChevronDown, ChevronUp, HeartPulse, Phone, AlertTriangle, Check, Loader, Plus, Trash2 } from 'lucide-react';
+import { User, ChevronRight, ChevronDown, ChevronUp, HeartPulse, Phone, AlertTriangle, Check, Loader, Plus, Trash2, Info } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Card from '../../components/ui/Card';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import Textarea from '../../components/ui/Textarea';
 import Badge from '../../components/ui/Badge';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import { formatPhone } from '../../utils/formatters';
 import { isValidPhone } from '../../utils/validators';
+import athleteService from '../../services/athleteService';
 
 /**
  * FamilyManagement Component
@@ -18,6 +20,7 @@ const FamilyManagement = ({ user, onUpdate, onBack }) => {
   const [expandedAthleteId, setExpandedAthleteId] = useState(athletes[0]?.id || null);
   const [notification, setNotification] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [removeContactConfirm, setRemoveContactConfirm] = useState(null);
 
   const showNotificationMessage = (msg) => {
     setNotification(msg);
@@ -101,18 +104,56 @@ const FamilyManagement = ({ user, onUpdate, onBack }) => {
       }
       return a;
     }));
+    setRemoveContactConfirm(null);
   };
 
+  // Check if there's any valid athlete data
+  const hasValidData = athletes.some(athlete =>
+    athlete.name && athlete.name.trim().length > 0
+  );
+
   // Save all changes
-  const handleSaveChanges = () => {
+  const handleSaveChanges = async () => {
+    // PREVENT DUPLICATE SUBMISSIONS
+    if (loading) {
+      return;
+    }
+
     setLoading(true);
-    setTimeout(() => {
+    try {
+      // Update each athlete via API
+      const updatePromises = athletes.map(async (athlete) => {
+        // Update basic athlete info
+        await athleteService.updateAthlete(athlete.id, {
+          firstName: athlete.firstName || athlete.name?.split(' ')[0] || '',
+          lastName: athlete.lastName || athlete.name?.split(' ').slice(1).join(' ') || '',
+          dateOfBirth: athlete.dateOfBirth || athlete.dob,
+          gender: athlete.gender,
+          jerseySize: athlete.jerseySize || athlete.jersey,
+        });
+
+        // Update medical info if present
+        if (athlete.medicalInfo) {
+          await athleteService.updateMedicalInfo(athlete.id, {
+            allergies: athlete.medicalInfo.allergies || '',
+            conditions: athlete.medicalInfo.conditions || '',
+            medications: athlete.medicalInfo.medications || '',
+          });
+        }
+      });
+
+      await Promise.all(updatePromises);
+
       const updatedUser = { ...user, students: athletes };
       onUpdate(updatedUser);
       localStorage.setItem('vanguard_user', JSON.stringify(updatedUser));
-      setLoading(false);
       showNotificationMessage('Family information updated successfully!');
-    }, 1000);
+    } catch (error) {
+      console.error('Failed to save changes:', error);
+      showNotificationMessage({ type: 'error', message: error.message || 'Failed to save changes. Please try again.' });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -121,7 +162,14 @@ const FamilyManagement = ({ user, onUpdate, onBack }) => {
         {/* Notification Toast */}
         {notification && (
           <div className="fixed top-24 right-6 z-50 bg-slate-900 text-white px-6 py-4 rounded-lg shadow-2xl animate-fade-in flex items-center gap-3">
-            <Check className="text-green-400" size={20} /> {notification}
+            {typeof notification === 'object' && notification.type === 'error' ? (
+              <AlertTriangle className="text-red-400" size={20} />
+            ) : typeof notification === 'object' && notification.type === 'warning' ? (
+              <Info className="text-yellow-400" size={20} />
+            ) : (
+              <Check className="text-green-400" size={20} />
+            )}
+            {typeof notification === 'object' ? notification.message : notification}
           </div>
         )}
 
@@ -311,7 +359,7 @@ const FamilyManagement = ({ user, onUpdate, onBack }) => {
                                 </Badge>
                                 {emergencyContacts.length > 1 && (
                                   <button
-                                    onClick={() => removeEmergencyContact(athlete.id, contact.id)}
+                                    onClick={() => setRemoveContactConfirm({ athleteId: athlete.id, contactId: contact.id })}
                                     className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50"
                                   >
                                     <Trash2 size={16} />
@@ -356,7 +404,7 @@ const FamilyManagement = ({ user, onUpdate, onBack }) => {
 
         {/* Save Button */}
         <div className="mt-8 flex gap-4 sticky bottom-6 bg-white p-4 rounded-lg shadow-lg border border-slate-200">
-          <Button onClick={handleSaveChanges} disabled={loading} fullWidth>
+          <Button onClick={handleSaveChanges} disabled={loading || !hasValidData} fullWidth>
             {loading ? (
               <>
                 <Loader className="animate-spin" size={18} />
@@ -374,6 +422,22 @@ const FamilyManagement = ({ user, onUpdate, onBack }) => {
           </Button>
         </div>
       </div>
+
+      {/* Remove Emergency Contact Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={removeContactConfirm !== null}
+        onClose={() => setRemoveContactConfirm(null)}
+        onConfirm={() => {
+          if (removeContactConfirm) {
+            removeEmergencyContact(removeContactConfirm.athleteId, removeContactConfirm.contactId);
+          }
+        }}
+        title="Remove Emergency Contact"
+        message="Are you sure you want to remove this emergency contact? This action cannot be undone."
+        confirmText="Remove Contact"
+        cancelText="Cancel"
+        variant="danger"
+      />
     </div>
   );
 };

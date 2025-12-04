@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { User, CreditCard, Users, LogOut, Check, RefreshCw, X, Settings, FileText, ChevronRight } from 'lucide-react';
+import { User, CreditCard, Users, LogOut, Check, RefreshCw, X, Settings, FileText, ChevronRight, AlertTriangle, Info } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Card from '../../components/ui/Card';
 import Badge from '../../components/ui/Badge';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
 
 /**
  * ParentDashboard Component
@@ -11,17 +12,20 @@ import Badge from '../../components/ui/Badge';
 const ParentDashboard = ({ user, logoutUser, onNavigate }) => {
   const [subStatus, setSubStatus] = useState(user.subscription?.status || 'Active');
   const [notification, setNotification] = useState(null);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
 
   const showNotificationMessage = (msg) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 3000);
   };
 
-  const handleCancel = () => {
-    if (window.confirm("Are you sure you want to cancel your membership?")) {
-      setSubStatus('Canceled');
-      showNotificationMessage('Subscription cancelled');
-    }
+  const handleCancelClick = () => {
+    setShowCancelDialog(true);
+  };
+
+  const handleCancelConfirm = () => {
+    setSubStatus('Canceled');
+    showNotificationMessage('Subscription cancelled successfully');
   };
 
   const handleResume = () => {
@@ -67,7 +71,14 @@ const ParentDashboard = ({ user, logoutUser, onNavigate }) => {
         {/* Notification Toast */}
         {notification && (
           <div className="fixed top-24 right-6 z-50 bg-slate-900 text-white px-6 py-4 rounded-lg shadow-2xl animate-fade-in flex items-center gap-3">
-            <Check className="text-green-400" size={20} /> {notification}
+            {typeof notification === 'object' && notification.type === 'error' ? (
+              <AlertTriangle className="text-red-400" size={20} />
+            ) : typeof notification === 'object' && notification.type === 'warning' ? (
+              <Info className="text-yellow-400" size={20} />
+            ) : (
+              <Check className="text-green-400" size={20} />
+            )}
+            {typeof notification === 'object' ? notification.message : notification}
           </div>
         )}
 
@@ -134,7 +145,7 @@ const ParentDashboard = ({ user, logoutUser, onNavigate }) => {
           <div className="mt-6 pt-6 border-t border-slate-100 flex flex-wrap gap-4">
             {subStatus === 'Active' ? (
               <button
-                onClick={handleCancel}
+                onClick={handleCancelClick}
                 className="text-sm font-medium text-red-500 hover:text-red-700 flex items-center gap-1"
               >
                 <X size={14} /> Cancel Subscription
@@ -189,7 +200,7 @@ const ParentDashboard = ({ user, logoutUser, onNavigate }) => {
             <p className="text-sm text-slate-600 mb-4">
               Contact our support team for any questions about your membership, billing, or athlete information.
             </p>
-            <Button variant="outline" className="text-sm h-9">
+            <Button variant="outline" className="text-sm h-9" onClick={() => window.location.href = 'mailto:vanguardsportsacademytx@gmail.com'}>
               Contact Support
             </Button>
           </Card>
@@ -202,12 +213,24 @@ const ParentDashboard = ({ user, logoutUser, onNavigate }) => {
             <p className="text-sm text-slate-600 mb-4">
               Next training session: Saturday at {user.subscription?.program?.includes('Basketball') ? '4:15 PM' : '10:30 AM'}
             </p>
-            <Button variant="outline" className="text-sm h-9">
+            <Button variant="outline" className="text-sm h-9" onClick={() => onNavigate('calendar')}>
               View Schedule
             </Button>
           </Card>
         </div>
       </div>
+
+      {/* Cancel Subscription Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showCancelDialog}
+        onClose={() => setShowCancelDialog(false)}
+        onConfirm={handleCancelConfirm}
+        title="Cancel Subscription"
+        message="Are you sure you want to cancel your membership? This action will end your subscription at the end of the current billing period."
+        confirmText="Yes, Cancel"
+        cancelText="No, Keep It"
+        variant="danger"
+      />
     </div>
   );
 };

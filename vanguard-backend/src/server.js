@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
+const { doubleCsrf } = require('csrf-csrf');
 
 const logger = require('./utils/logger');
 const { testConnection } = require('./config/database');
@@ -20,9 +21,14 @@ const PORT = process.env.PORT || 5000;
 // Security Headers
 app.use(helmet());
 
-// CORS Configuration
+// CORS Configuration - Require FRONTEND_URL in production
+if (!process.env.FRONTEND_URL && process.env.NODE_ENV === 'production') {
+  logger.error('❌ FRONTEND_URL environment variable is required in production');
+  process.exit(1);
+}
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5174',
+  origin: process.env.FRONTEND_URL || 'http://localhost:5174', // localhost only for development
   credentials: true,
   methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -55,7 +61,70 @@ const limiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Stricter rate limiting for authentication endpoints (prevent brute force attacks)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Only 5 attempts per 15 minutes
+  message: 'Too many authentication attempts from this IP. Please try again in 15 minutes.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: false, // Count all requests, even successful ones
+});
+
+// Apply strict rate limiting to auth endpoints BEFORE general limiter
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/refresh', authLimiter);
+
 app.use('/api/', limiter);
+
+// =======================
+// CSRF PROTECTION
+// =======================
+
+// Configure CSRF protection with double-submit cookie pattern
+const {
+  generateToken, // Generates a CSRF token pair
+  doubleCsrfProtection, // The middleware to apply
+} = doubleCsrf({
+  getSecret: () => process.env.CSRF_SECRET || 'default-csrf-secret-change-in-production',
+  cookieName: '__Host-psifi.x-csrf-token', // Cookie name for CSRF token
+  cookieOptions: {
+    sameSite: 'strict',
+    path: '/',
+    secure: process.env.NODE_ENV === 'production', // Only send over HTTPS in production
+    httpOnly: true, // Prevent JavaScript access
+  },
+  size: 64, // Token size
+  ignoredMethods: ['GET', 'HEAD', 'OPTIONS'], // Methods that don't need CSRF
+});
+
+// Endpoint to get CSRF token (must be called before submitting forms)
+app.get('/api/csrf-token', (req, res) => {
+  const csrfToken = generateToken(req, res);
+  res.json({ csrfToken });
+});
+
+// Apply CSRF protection to all state-changing routes except webhooks
+// TEMPORARY: CSRF disabled until frontend integration is complete
+// TODO: Re-enable CSRF protection after frontend integration
+// app.use((req, res, next) => {
+//   // Skip CSRF for webhooks (they use signature verification instead)
+//   if (req.path.startsWith('/api/webhooks/')) {
+//     return next();
+//   }
+//
+//   // Skip CSRF for GET, HEAD, OPTIONS requests
+//   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+//     return next();
+//   }
+//
+//   // Apply CSRF protection to POST, PUT, PATCH, DELETE
+//   return doubleCsrfProtection(req, res, next);
+// });
+
+// TEMPORARY BYPASS: Allow all requests without CSRF (remove this when ready for production)
+app.use((req, res, next) => next());
 
 // =======================
 // ROUTES
@@ -82,13 +151,17 @@ app.get('/api', (req, res) => {
 
 // Mount API routes
 app.use('/api/auth', require('./routes/auth.routes'));
+app.use('/api/public', require('./routes/public.routes'));
 app.use('/api/sessions', require('./routes/session.routes'));
 app.use('/api/users', require('./routes/user.routes'));
 app.use('/api/athletes', require('./routes/athlete.routes'));
 app.use('/api/enrollments', require('./routes/enrollment.routes'));
 app.use('/api/evaluations', require('./routes/evaluation.routes'));
-// app.use('/api/billing', require('./routes/billing.routes'));
-// app.use('/api/admin', require('./routes/admin.routes'));
+app.use('/api/contact', require('./routes/contact.routes'));
+app.use('/api/billing', require('./routes/billing.routes'));
+app.use('/api/webhooks', require('./routes/webhook.routes'));
+app.use('/api/admin', require('./routes/admin.routes'));
+app.use('/api/announcements', require('./routes/announcement.routes'));
 
 // 404 Handler
 app.use((req, res) => {

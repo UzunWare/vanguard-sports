@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
-import { LayoutDashboard, Calendar, Users, DollarSign, LogOut } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, DollarSign, Megaphone, LogOut } from 'lucide-react';
 import OverviewTab from './tabs/OverviewTab';
 import SessionsTab from './tabs/SessionsTab';
 import UsersTab from './tabs/UsersTab';
 import FinancialTab from './tabs/FinancialTab';
+import AnnouncementsTab from './tabs/AnnouncementsTab';
 
 /**
  * AdminDashboard Component
  * Super Admin dashboard with full platform control
  */
-const AdminDashboard = ({ user, logoutUser, sessions, onUpdateSessions }) => {
+const AdminDashboard = ({ user, logoutUser, sessions, onUpdateSessions, onNavigate }) => {
   const [activeTab, setActiveTab] = useState('overview');
 
   // Navigation items
@@ -17,7 +18,8 @@ const AdminDashboard = ({ user, logoutUser, sessions, onUpdateSessions }) => {
     { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
     { id: 'sessions', icon: Calendar, label: 'Sessions' },
     { id: 'users', icon: Users, label: 'Users' },
-    { id: 'financial', icon: DollarSign, label: 'Financial' }
+    { id: 'financial', icon: DollarSign, label: 'Financial' },
+    { id: 'announcements', icon: Megaphone, label: 'Announcements' }
   ];
 
   return (
@@ -48,6 +50,15 @@ const AdminDashboard = ({ user, logoutUser, sessions, onUpdateSessions }) => {
               <span className="font-medium hidden lg:block">{item.label}</span>
             </button>
           ))}
+          {onNavigate && (
+            <button
+              onClick={() => onNavigate('calendar')}
+              className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-800 hover:text-white transition-all"
+            >
+              <Calendar size={20} />
+              <span className="font-medium hidden lg:block">Full Calendar</span>
+            </button>
+          )}
         </nav>
 
         {/* Logout Button */}
@@ -82,7 +93,7 @@ const AdminDashboard = ({ user, logoutUser, sessions, onUpdateSessions }) => {
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-auto p-8">
-          {activeTab === 'overview' && <OverviewTab onNavigateToTab={setActiveTab} />}
+          {activeTab === 'overview' && <OverviewTab onNavigateToTab={setActiveTab} sessions={sessions} />}
           {activeTab === 'sessions' && (
             <SessionsTab
               onNavigateToTab={setActiveTab}
@@ -95,6 +106,9 @@ const AdminDashboard = ({ user, logoutUser, sessions, onUpdateSessions }) => {
           )}
           {activeTab === 'financial' && (
             <FinancialTab onNavigateToTab={setActiveTab} />
+          )}
+          {activeTab === 'announcements' && (
+            <AnnouncementsTab onNavigateToTab={setActiveTab} />
           )}
         </div>
       </div>

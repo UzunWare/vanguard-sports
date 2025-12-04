@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Star, Calendar, User, FileText, Trash2, Edit, Search, Filter, TrendingUp, Award, X, Check, ChevronDown } from 'lucide-react';
 import Card from '../../../components/ui/Card';
 import Badge from '../../../components/ui/Badge';
@@ -6,8 +6,8 @@ import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
 import Textarea from '../../../components/ui/Textarea';
 import { SKILL_CRITERIA } from '../../../data/skillCriteria';
-import { generateMockEvaluations } from '../../../data/mockData';
 import { calculateAverageRating } from '../../../utils/calculations';
+import evaluationService from '../../../services/evaluationService';
 
 /**
  * EvaluationsTab Component
@@ -19,6 +19,7 @@ const EvaluationsTab = ({ sessions, rosters, setRosters, user }) => {
   const [showNewEvalModal, setShowNewEvalModal] = useState(false);
   const [selectedEvaluation, setSelectedEvaluation] = useState(null);
   const [savedEvaluations, setSavedEvaluations] = useState([]);
+  const [loading, setLoading] = useState(false);
 
   // New evaluation state
   const [newEval, setNewEval] = useState({
@@ -48,8 +49,40 @@ const EvaluationsTab = ({ sessions, rosters, setRosters, user }) => {
     return athletes;
   }, [mySessions, rosters]);
 
+  // Load evaluations from backend
+  useEffect(() => {
+    const fetchEvaluations = async () => {
+      setLoading(true);
+      try {
+        const response = await evaluationService.getEvaluations();
+
+        // Transform backend data to frontend format
+        if (response.evaluations) {
+          const transformedEvals = response.evaluations.map(evaluation => ({
+            id: evaluation.id,
+            athleteId: evaluation.athlete_id,
+            sessionId: evaluation.session_id,
+            date: evaluation.evaluation_date || evaluation.created_at,
+            ratings: evaluation.ratings || {}, // Ratings are stored as JSON in the backend
+            notes: evaluation.notes || '',
+            coachName: evaluation.coach_name || user.name,
+            overallRating: calculateAverageRating(evaluation.ratings || {}),
+            timestamp: evaluation.created_at
+          }));
+          setSavedEvaluations(transformedEvals);
+        }
+      } catch (error) {
+        console.error('Failed to load evaluations:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchEvaluations();
+  }, [user.name]);
+
   // Check for pre-selected athlete from Athletes tab
-  React.useEffect(() => {
+  useEffect(() => {
     if (window.selectedAthleteForEval && allAthletes.length > 0) {
       const athleteId = window.selectedAthleteForEval;
       delete window.selectedAthleteForEval;
@@ -67,24 +100,11 @@ const EvaluationsTab = ({ sessions, rosters, setRosters, user }) => {
     }
   }, [allAthletes]);
 
-  // Generate mock evaluations for all athletes + combine with saved ones
+  // Get all real evaluations from saved evaluations
   const allEvaluations = useMemo(() => {
     const evals = [];
 
-    // Add mock evaluations (only 1 per athlete to reduce clutter)
-    allAthletes.forEach(athlete => {
-      const mockEvals = generateMockEvaluations(athlete.id, user.sport, 1);
-      mockEvals.forEach(evaluation => {
-        evals.push({
-          ...evaluation,
-          athleteName: athlete.name,
-          sessionName: athlete.sessionName,
-          sessionId: athlete.sessionId
-        });
-      });
-    });
-
-    // Add saved evaluations
+    // Only use saved evaluations (no mock data)
     savedEvaluations.forEach(evaluation => {
       const athlete = allAthletes.find(a => a.id === evaluation.athleteId);
       if (athlete) {
@@ -94,13 +114,13 @@ const EvaluationsTab = ({ sessions, rosters, setRosters, user }) => {
           athleteName: athlete.name,
           sessionName: athlete.sessionName,
           sessionId: athlete.sessionId,
-          coach: user.name
+          coachName: user.name
         });
       }
     });
 
     return evals.sort((a, b) => new Date(b.date) - new Date(a.date));
-  }, [allAthletes, user.sport, savedEvaluations]);
+  }, [allAthletes, savedEvaluations, user.name]);
 
   // Filter evaluations
   const filteredEvaluations = useMemo(() => {
@@ -153,23 +173,37 @@ const EvaluationsTab = ({ sessions, rosters, setRosters, user }) => {
   };
 
   // Handle save evaluation
-  const handleSaveEvaluation = () => {
-    // In a real app, this would save to backend
-    // For now, update the roster ratings and add to saved evaluations
-    if (newEval.athleteId && newEval.sessionId) {
+  const handleSaveEvaluation = async () => {
+    if (!newEval.athleteId || !newEval.sessionId) return;
+
+    setLoading(true);
+    try {
+      // Save evaluation to backend
+      const response = await evaluationService.createEvaluation({
+        athleteId: newEval.athleteId,
+        sessionId: newEval.sessionId,
+        evaluationDate: newEval.date,
+        notes: newEval.notes,
+        ratings: Object.entries(newEval.ratings).map(([skill, rating]) => ({
+          skill,
+          rating,
+          notes: ''
+        }))
+      });
+
       // Calculate overall rating
       const overallRating = calculateAverageRating(newEval.ratings);
 
-      // Create new evaluation object
+      // Create evaluation object for local state
       const newEvaluation = {
-        id: `eval-${Date.now()}-${Math.random()}`,
+        id: response.evaluation?.id || `eval-${Date.now()}`,
         athleteId: newEval.athleteId,
         sessionId: newEval.sessionId,
         date: newEval.date,
         ratings: newEval.ratings,
         notes: newEval.notes,
         overallRating,
-        coach: user.name,
+        coachName: user.name,
         timestamp: new Date().toISOString()
       };
 
@@ -195,6 +229,11 @@ const EvaluationsTab = ({ sessions, rosters, setRosters, user }) => {
         notes: ''
       });
       setShowNewEvalModal(false);
+    } catch (error) {
+      console.error('Failed to save evaluation:', error);
+      alert('Failed to save evaluation. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 

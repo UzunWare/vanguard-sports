@@ -288,6 +288,31 @@ const markAttendance = async (enrollmentId, attendanceData) => {
 };
 
 /**
+ * Get attendance history for an enrollment
+ */
+const getEnrollmentAttendanceHistory = async (enrollmentId) => {
+  try {
+    const query = `
+      SELECT
+        al.id,
+        al.date,
+        al.status,
+        al.notes
+      FROM attendance_logs al
+      WHERE al.enrollment_id = $1
+      ORDER BY al.date DESC
+      LIMIT 30
+    `;
+
+    const result = await db.query(query, [enrollmentId]);
+    return result.rows;
+  } catch (error) {
+    logger.error('Get enrollment attendance history error:', error.message);
+    throw error;
+  }
+};
+
+/**
  * Get enrollments for a session (coach/admin access)
  */
 const getSessionEnrollments = async (sessionId) => {
@@ -295,17 +320,35 @@ const getSessionEnrollments = async (sessionId) => {
     const query = `
       SELECT
         e.*,
+        a.id as athlete_id,
         a.first_name as athlete_first_name,
         a.last_name as athlete_last_name,
         a.date_of_birth as athlete_dob,
         a.gender as athlete_gender,
+        a.jersey_size,
+        m.allergies,
+        m.conditions,
+        m.medications,
         u.first_name || ' ' || u.last_name as parent_name,
         u.phone as parent_phone,
-        u.email as parent_email
+        u.email as parent_email,
+        -- Calculate attendance statistics
+        COUNT(al.id) FILTER (WHERE al.status = 'present') as present_count,
+        COUNT(al.id) as total_attendance_records,
+        CASE
+          WHEN COUNT(al.id) > 0
+          THEN ROUND((COUNT(al.id) FILTER (WHERE al.status = 'present')::numeric / COUNT(al.id)::numeric) * 100)
+          ELSE 0
+        END as attendance_rate
       FROM enrollments e
       INNER JOIN athletes a ON e.athlete_id = a.id
       INNER JOIN users u ON e.parent_id = u.id
+      LEFT JOIN medical_info m ON a.id = m.athlete_id
+      LEFT JOIN attendance_logs al ON e.id = al.enrollment_id
       WHERE e.session_id = $1 AND e.status = 'active'
+      GROUP BY e.id, a.id, a.first_name, a.last_name, a.date_of_birth,
+               a.gender, a.jersey_size, m.allergies, m.conditions, m.medications,
+               u.first_name, u.last_name, u.phone, u.email
       ORDER BY a.last_name, a.first_name
     `;
 
@@ -325,4 +368,5 @@ module.exports = {
   getSessionAttendance,
   markAttendance,
   getSessionEnrollments,
+  getEnrollmentAttendanceHistory,
 };

@@ -94,4 +94,11 @@ router.post('/attendance', authenticate, authorize('coach', 'admin'), markAttend
  */
 router.get('/sessions/:sessionId', authenticate, authorize('coach', 'admin'), sessionIdValidation, validate, enrollmentController.getSessionEnrollments);
 
+/**
+ * @route   GET /api/enrollments/:id/attendance-history
+ * @desc    Get attendance history for an enrollment
+ * @access  Private (Coach, Admin)
+ */
+router.get('/:id/attendance-history', authenticate, authorize('coach', 'admin'), enrollmentIdValidation, validate, enrollmentController.getEnrollmentAttendanceHistory);
+
 module.exports = router;

@@ -6,8 +6,9 @@ import Badge from '../../components/ui/Badge';
 import Input from '../../components/ui/Input';
 import Table from '../../components/ui/Table';
 import LoadingSkeleton from '../../components/ui/LoadingSkeleton';
-import { generateMockInvoices, generateMockPaymentMethods } from '../../data/mockData';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import { formatCurrency, formatDate, maskCardNumber } from '../../utils/formatters';
+import billingService from '../../services/billingService';
 
 /**
  * BillingPortal Component
@@ -22,15 +23,31 @@ const BillingPortal = ({ user, onBack }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [showAddCardModal, setShowAddCardModal] = useState(false);
+  const [showRemoveDialog, setShowRemoveDialog] = useState(false);
+  const [methodToRemove, setMethodToRemove] = useState(null);
 
-  // Load mock data
+  // Load real billing data
   useEffect(() => {
-    setLoading(true);
-    setTimeout(() => {
-      setInvoices(generateMockInvoices(15));
-      setPaymentMethods(generateMockPaymentMethods());
-      setLoading(false);
-    }, 800);
+    const fetchBillingData = async () => {
+      setLoading(true);
+      try {
+        const invoiceData = await billingService.getMyInvoices();
+        setInvoices(invoiceData);
+
+        // Payment methods will come from Stripe integration later
+        // For now, show empty state
+        setPaymentMethods([]);
+      } catch (error) {
+        console.error('Failed to load billing data:', error);
+        showNotificationMessage('Failed to load billing data');
+        setInvoices([]);
+        setPaymentMethods([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchBillingData();
   }, []);
 
   const showNotificationMessage = (msg) => {
@@ -62,10 +79,16 @@ const BillingPortal = ({ user, onBack }) => {
   };
 
   // Handle remove payment method
-  const handleRemoveMethod = (methodId) => {
-    if (window.confirm('Are you sure you want to remove this payment method?')) {
-      setPaymentMethods(prev => prev.filter(pm => pm.id !== methodId));
-      showNotificationMessage('Payment method removed');
+  const handleRemoveMethodClick = (methodId) => {
+    setMethodToRemove(methodId);
+    setShowRemoveDialog(true);
+  };
+
+  const handleRemoveMethodConfirm = () => {
+    if (methodToRemove) {
+      setPaymentMethods(prev => prev.filter(pm => pm.id !== methodToRemove));
+      showNotificationMessage('Payment method removed successfully');
+      setMethodToRemove(null);
     }
   };
 
@@ -295,7 +318,7 @@ const BillingPortal = ({ user, onBack }) => {
                           </Button>
                         )}
                         <button
-                          onClick={() => handleRemoveMethod(method.id)}
+                          onClick={() => handleRemoveMethodClick(method.id)}
                           className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                           title="Remove card"
                         >
@@ -345,6 +368,21 @@ const BillingPortal = ({ user, onBack }) => {
           </div>
         </div>
       )}
+
+      {/* Remove Payment Method Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showRemoveDialog}
+        onClose={() => {
+          setShowRemoveDialog(false);
+          setMethodToRemove(null);
+        }}
+        onConfirm={handleRemoveMethodConfirm}
+        title="Remove Payment Method"
+        message="Are you sure you want to remove this payment method? This action cannot be undone."
+        confirmText="Yes, Remove"
+        cancelText="Cancel"
+        variant="danger"
+      />
     </div>
   );
 };

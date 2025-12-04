@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { User, Mail, Phone, Lock, Check, Loader, ChevronRight } from 'lucide-react';
+import { User, Mail, Phone, Lock, Check, Loader, ChevronRight, AlertTriangle, Info } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Card from '../../components/ui/Card';
 import Input from '../../components/ui/Input';
 import { isValidEmail, validatePasswordStrength } from '../../utils/validators';
 import { formatPhone } from '../../utils/formatters';
+import authService from '../../services/authService';
+import userService from '../../services/userService';
 
 /**
  * AccountSettings Component
@@ -67,30 +69,58 @@ const AccountSettings = ({ user, onUpdate, onBack }) => {
   };
 
   // Handle profile save
-  const handleProfileSave = () => {
+  const handleProfileSave = async () => {
     if (!validateProfile()) return;
 
     setLoading(true);
-    setTimeout(() => {
-      const updatedUser = { ...user, ...profileData };
+    try {
+      // Split name into first and last name
+      const [firstName, ...lastNameParts] = profileData.name.trim().split(' ');
+      const lastName = lastNameParts.join(' ') || firstName; // If no last name, use first name
+
+      const response = await userService.updateProfile({
+        firstName,
+        lastName,
+        phone: profileData.phone
+      });
+
+      // Update user object with new data
+      const updatedUser = {
+        ...user,
+        firstName: response.user.firstName,
+        lastName: response.user.lastName,
+        name: `${response.user.firstName} ${response.user.lastName}`,
+        phone: response.user.phone
+      };
+
       onUpdate(updatedUser);
       localStorage.setItem('vanguard_user', JSON.stringify(updatedUser));
-      setLoading(false);
       showNotificationMessage('Profile updated successfully!');
-    }, 1000);
+    } catch (error) {
+      showNotificationMessage(error.message || 'Failed to update profile. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Handle password change
-  const handlePasswordChange = () => {
+  const handlePasswordChange = async () => {
     if (!validateSecurity()) return;
 
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      await authService.changePassword(
+        securityData.currentPassword,
+        securityData.newPassword
+      );
       setSecurityData({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setPasswordStrength(null);
       showNotificationMessage('Password changed successfully!');
-    }, 1000);
+    } catch (error) {
+      showNotificationMessage(error.message || 'Failed to change password. Please check your current password.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Handle password strength check
@@ -105,7 +135,14 @@ const AccountSettings = ({ user, onUpdate, onBack }) => {
         {/* Notification Toast */}
         {notification && (
           <div className="fixed top-24 right-6 z-50 bg-slate-900 text-white px-6 py-4 rounded-lg shadow-2xl animate-fade-in flex items-center gap-3">
-            <Check className="text-green-400" size={20} /> {notification}
+            {typeof notification === 'object' && notification.type === 'error' ? (
+              <AlertTriangle className="text-red-400" size={20} />
+            ) : typeof notification === 'object' && notification.type === 'warning' ? (
+              <Info className="text-yellow-400" size={20} />
+            ) : (
+              <Check className="text-green-400" size={20} />
+            )}
+            {typeof notification === 'object' ? notification.message : notification}
           </div>
         )}
 

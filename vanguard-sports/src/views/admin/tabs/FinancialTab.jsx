@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   DollarSign,
   TrendingUp,
@@ -12,11 +12,12 @@ import {
   Calendar,
   CheckCircle,
   XCircle,
-  Clock
+  Clock,
+  Loader
 } from 'lucide-react';
 import { Card, Badge, Button, Input, Select } from '../../../components/ui';
 import { formatCurrency, formatDate } from '../../../utils/formatters';
-import { generateTransactions } from '../../../data/mockData';
+import { adminService } from '../../../services/adminService';
 
 /**
  * FinancialTab
@@ -31,13 +32,66 @@ const FinancialTab = ({ onNavigateToTab }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [dateRange, setDateRange] = useState('all');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Generate mock transactions
-  const [transactions] = useState(() => generateTransactions(100));
+  // API Data State
+  const [financialData, setFinancialData] = useState({
+    overview: null,
+    revenueBySport: [],
+    subscriptionStats: null,
+    transactions: [],
+  });
+
+  // Fetch financial data from API
+  useEffect(() => {
+    const fetchFinancialData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Fetch all data from admin endpoint
+        const [overview, revenueBySport, subscriptionStats, transactions] = await Promise.all([
+          adminService.getFinancialOverview(),
+          adminService.getRevenueBreakdownBySport(),
+          adminService.getSubscriptionStats(),
+          adminService.getRecentTransactions(200), // Fetch more for filtering
+        ]);
+
+        setFinancialData({
+          overview,
+          revenueBySport,
+          subscriptionStats,
+          transactions,
+        });
+      } catch (err) {
+        setError(err.message || 'Failed to load financial data');
+      } finally{
+        setLoading(false);
+      }
+    };
+
+    fetchFinancialData();
+  }, []);
+
+  // Map API transactions to UI format
+  const mappedTransactions = useMemo(() => {
+    return financialData.transactions.map(txn => ({
+      id: txn.transactionNumber,
+      date: txn.processedAt || txn.createdAt,
+      userName: txn.parentName,
+      description: txn.description,
+      amount: txn.amount,
+      status: txn.status === 'succeeded' ? 'Paid' :
+              txn.status === 'failed' ? 'Failed' :
+              txn.status === 'refunded' ? 'Refunded' : 'Paid',
+      paymentMethod: txn.paymentMethod || 'Credit Card',
+    }));
+  }, [financialData.transactions]);
 
   // Filter transactions
   const filteredTransactions = useMemo(() => {
-    return transactions.filter(txn => {
+    return mappedTransactions.filter(txn => {
       // Search filter
       const matchesSearch = searchQuery === '' ||
         txn.userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -61,19 +115,36 @@ const FinancialTab = ({ onNavigateToTab }) => {
 
       return matchesSearch && matchesStatus && matchesDate;
     });
-  }, [transactions, searchQuery, statusFilter, dateRange]);
+  }, [mappedTransactions, searchQuery, statusFilter, dateRange]);
 
   // Calculate financial metrics
   const metrics = useMemo(() => {
-    const totalRevenue = filteredTransactions
-      .filter(t => t.status === 'Paid')
-      .reduce((sum, t) => sum + t.amount, 0);
+    if (!financialData.overview) {
+      return {
+        totalRevenue: 0,
+        revenueGrowth: 0,
+        mrr: 0,
+        activeSubscriptions: 0,
+        arpu: 0,
+        ltv: 0,
+        paidCount: 0,
+        failedCount: 0,
+        refundedCount: 0,
+      };
+    }
 
-    const previousTotal = 45000; // Mock previous period
-    const revenueGrowth = ((totalRevenue - previousTotal) / previousTotal * 100).toFixed(1);
+    const totalRevenue = financialData.overview.totalRevenue || 0;
+    const monthlyRevenue = financialData.overview.monthlyRevenue || 0;
+    const previousMonthlyRevenue = totalRevenue > monthlyRevenue ?
+      (totalRevenue - monthlyRevenue) / Math.max(1, Math.ceil(totalRevenue / monthlyRevenue - 1)) :
+      monthlyRevenue * 0.9; // Estimate if no history
 
-    const activeSubscriptions = 124; // Mock
-    const mrr = totalRevenue / (filteredTransactions.length > 0 ? 3 : 1); // Approximate MRR
+    const revenueGrowth = previousMonthlyRevenue > 0 ?
+      ((monthlyRevenue - previousMonthlyRevenue) / previousMonthlyRevenue * 100).toFixed(1) :
+      '0.0';
+
+    const activeSubscriptions = financialData.subscriptionStats?.active || 0;
+    const mrr = monthlyRevenue;
     const arpu = activeSubscriptions > 0 ? (mrr / activeSubscriptions) : 0;
     const ltv = arpu * 12; // Approximate LTV (12 months)
 
@@ -83,7 +154,7 @@ const FinancialTab = ({ onNavigateToTab }) => {
 
     return {
       totalRevenue,
-      revenueGrowth,
+      revenueGrowth: parseFloat(revenueGrowth),
       mrr,
       activeSubscriptions,
       arpu,
@@ -92,17 +163,26 @@ const FinancialTab = ({ onNavigateToTab }) => {
       failedCount,
       refundedCount
     };
-  }, [filteredTransactions]);
+  }, [financialData, filteredTransactions]);
 
   // Calculate revenue by sport
   const revenueBySport = useMemo(() => {
-    const basketball = filteredTransactions
-      .filter(t => t.description.includes('Basketball') && t.status === 'Paid')
-      .reduce((sum, t) => sum + t.amount, 0);
+    if (!financialData.revenueBySport || financialData.revenueBySport.length === 0) {
+      return {
+        basketball: 0,
+        volleyball: 0,
+        basketballPercent: 50,
+        volleyballPercent: 50,
+      };
+    }
 
-    const volleyball = filteredTransactions
-      .filter(t => t.description.includes('Volleyball') && t.status === 'Paid')
-      .reduce((sum, t) => sum + t.amount, 0);
+    const basketball = financialData.revenueBySport.find(s =>
+      s.sport?.toLowerCase() === 'basketball'
+    )?.revenue || 0;
+
+    const volleyball = financialData.revenueBySport.find(s =>
+      s.sport?.toLowerCase() === 'volleyball'
+    )?.revenue || 0;
 
     const total = basketball + volleyball;
     const basketballPercent = total > 0 ? (basketball / total * 100).toFixed(0) : 50;
@@ -114,7 +194,7 @@ const FinancialTab = ({ onNavigateToTab }) => {
       basketballPercent,
       volleyballPercent
     };
-  }, [filteredTransactions]);
+  }, [financialData.revenueBySport]);
 
   // Get status badge color
   const getStatusColor = (status) => {
@@ -159,6 +239,34 @@ const FinancialTab = ({ onNavigateToTab }) => {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <Loader className="w-12 h-12 text-orange-600 animate-spin mx-auto mb-4" />
+          <p className="text-slate-600 font-medium">Loading financial data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Card className="p-8 max-w-md text-center">
+          <XCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h3 className="text-xl font-bold text-slate-900 mb-2">Failed to Load Data</h3>
+          <p className="text-slate-600 mb-4">{error}</p>
+          <Button onClick={() => window.location.reload()}>
+            Reload Page
+          </Button>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -321,7 +429,7 @@ const FinancialTab = ({ onNavigateToTab }) => {
                 </div>
               </div>
               <p className="text-xl font-bold text-green-600">
-                {((metrics.paidCount / filteredTransactions.length) * 100).toFixed(1)}%
+                {filteredTransactions.length > 0 ? ((metrics.paidCount / filteredTransactions.length) * 100).toFixed(1) : '0.0'}%
               </p>
             </div>
 
@@ -336,7 +444,7 @@ const FinancialTab = ({ onNavigateToTab }) => {
                 </div>
               </div>
               <p className="text-xl font-bold text-red-600">
-                {((metrics.failedCount / filteredTransactions.length) * 100).toFixed(1)}%
+                {filteredTransactions.length > 0 ? ((metrics.failedCount / filteredTransactions.length) * 100).toFixed(1) : '0.0'}%
               </p>
             </div>
 
@@ -351,7 +459,7 @@ const FinancialTab = ({ onNavigateToTab }) => {
                 </div>
               </div>
               <p className="text-xl font-bold text-purple-600">
-                {((metrics.refundedCount / filteredTransactions.length) * 100).toFixed(1)}%
+                {filteredTransactions.length > 0 ? ((metrics.refundedCount / filteredTransactions.length) * 100).toFixed(1) : '0.0'}%
               </p>
             </div>
 
@@ -424,7 +532,11 @@ const FinancialTab = ({ onNavigateToTab }) => {
                   <td colSpan="7" className="text-center p-12 text-slate-500">
                     <FileText className="w-12 h-12 mx-auto mb-4 opacity-30" />
                     <p className="font-semibold">No transactions found</p>
-                    <p className="text-sm mt-1">Try adjusting your filters</p>
+                    <p className="text-sm mt-1">
+                      {mappedTransactions.length === 0
+                        ? 'No transaction data available yet'
+                        : 'Try adjusting your filters'}
+                    </p>
                   </td>
                 </tr>
               ) : (

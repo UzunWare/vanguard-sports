@@ -71,6 +71,13 @@ export const enrollmentService = {
   async getSessionEnrollments(sessionId) {
     return apiClient.get(`/enrollments/sessions/${sessionId}`);
   },
+
+  /**
+   * Get attendance history for an enrollment (coach/admin)
+   */
+  async getEnrollmentAttendanceHistory(enrollmentId) {
+    return apiClient.get(`/enrollments/${enrollmentId}/attendance-history`);
+  },
 };
 
 export default enrollmentService;

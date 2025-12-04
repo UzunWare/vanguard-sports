@@ -1,4 +1,5 @@
 const { Pool } = require('pg');
+const logger = require('../utils/logger');
 require('dotenv').config();
 
 /**
@@ -21,7 +22,7 @@ pool.on('connect', () => {
 });
 
 pool.on('error', (err) => {
-  console.error('❌ Unexpected error on idle client', err);
+  logger.error('❌ Unexpected error on idle client', { error: err.message, code: err.code });
   process.exit(-1);
 });
 
@@ -36,10 +37,30 @@ const query = async (text, params) => {
   try {
     const res = await pool.query(text, params);
     const duration = Date.now() - start;
-    console.log('📊 Query executed:', { text, duration, rows: res.rowCount });
+
+    // Only log query details in development - never log full SQL in production
+    if (process.env.NODE_ENV === 'development') {
+      logger.debug('Query executed:', {
+        text: text.substring(0, 100) + (text.length > 100 ? '...' : ''), // Truncate long queries
+        duration,
+        rows: res.rowCount
+      });
+    } else {
+      // In production, only log duration and row count
+      logger.debug('Query executed:', { duration, rows: res.rowCount });
+    }
+
     return res;
   } catch (error) {
-    console.error('❌ Query error:', { text, error: error.message });
+    // Never log full SQL query text in errors - only log metadata
+    logger.error('Query execution failed:', {
+      duration: Date.now() - start,
+      error: error.message,
+      code: error.code,
+      ...(process.env.NODE_ENV === 'development' && {
+        queryPreview: text.substring(0, 50) + '...'
+      })
+    });
     throw error;
   }
 };
@@ -55,7 +76,7 @@ const getClient = async () => {
 
   // Set a timeout of 5 seconds, after which we will log this client's last query
   const timeout = setTimeout(() => {
-    console.error('⚠️  A client has been checked out for more than 5 seconds!');
+    logger.warn('⚠️  A client has been checked out for more than 5 seconds!');
   }, 5000);
 
   // Monkey patch the release method to clear our timeout
@@ -79,7 +100,7 @@ const testConnection = async () => {
     console.log('✅ Database connection test passed:', res.rows[0].now);
     return true;
   } catch (error) {
-    console.error('❌ Database connection test failed:', error.message);
+    logger.error('❌ Database connection test failed:', { error: error.message });
     return false;
   }
 };

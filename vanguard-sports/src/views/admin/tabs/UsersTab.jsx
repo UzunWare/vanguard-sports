@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Users as UsersIcon,
   Shield,
@@ -14,11 +14,13 @@ import {
   CheckCircle,
   Trash2,
   Mail,
-  Download
+  Download,
+  Loader
 } from 'lucide-react';
 import { Card, Badge, Button, Input, Select } from '../../../components/ui';
+import ConfirmDialog from '../../../components/ui/ConfirmDialog';
 import { formatDate } from '../../../utils/formatters';
-import { generateUsersList } from '../../../data/mockData';
+import userService from '../../../services/userService';
 
 /**
  * UsersTab
@@ -37,9 +39,46 @@ const UsersTab = ({ onNavigateToTab }) => {
   const [showUserModal, setShowUserModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
+  const [showSuspendConfirm, setShowSuspendConfirm] = useState(null);
+  const [showActivateConfirm, setShowActivateConfirm] = useState(null);
+  const [showResetPasswordConfirm, setShowResetPasswordConfirm] = useState(null);
 
-  // Generate mock users
-  const [users, setUsers] = useState(() => generateUsersList(50));
+  // User data state
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Fetch users from backend
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        setLoading(true);
+        const response = await userService.getAllUsers();
+        if (response.users) {
+          // Transform backend data to match frontend format
+          const transformedUsers = response.users.map(user => ({
+            id: user.id,
+            name: `${user.first_name} ${user.last_name}`,
+            email: user.email,
+            role: user.role === 'admin' ? 'Admin' : user.role === 'coach' ? 'Coach' : 'Parent',
+            status: user.status === 'active' ? 'Active' : user.status === 'suspended' ? 'Suspended' : 'Inactive',
+            registered: user.created_at,
+            lastLogin: user.last_login || user.created_at,
+            loginCount: 0,
+            subscriptions: 0
+          }));
+          setUsers(transformedUsers);
+        }
+      } catch (err) {
+        console.error('Error fetching users:', err);
+        setError(err.message || 'Failed to load users');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUsers();
+  }, []);
 
   // Filter users based on search and filters
   const filteredUsers = useMemo(() => {
@@ -115,6 +154,7 @@ const UsersTab = ({ onNavigateToTab }) => {
     setUsers(prev => prev.map(u =>
       u.id === userId ? { ...u, status: 'Suspended' } : u
     ));
+    setShowSuspendConfirm(null);
     setShowActionMenu(null);
   };
 
@@ -122,12 +162,17 @@ const UsersTab = ({ onNavigateToTab }) => {
     setUsers(prev => prev.map(u =>
       u.id === userId ? { ...u, status: 'Active' } : u
     ));
+    setShowActivateConfirm(null);
     setShowActionMenu(null);
   };
 
-  const handleResetPassword = (user) => {
-    // Simulate password reset email
-    alert(`Password reset email sent to ${user.email}`);
+  const handleResetPassword = (userId) => {
+    const user = users.find(u => u.id === userId);
+    if (user) {
+      // Simulate password reset email
+      // In production, this would call an API to send reset email
+    }
+    setShowResetPasswordConfirm(null);
     setShowActionMenu(null);
   };
 
@@ -159,6 +204,30 @@ const UsersTab = ({ onNavigateToTab }) => {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <Loader className="w-8 h-8 text-orange-600 animate-spin mx-auto mb-4" />
+          <p className="text-slate-600">Loading users...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <Card className="p-6">
+        <div className="text-center text-red-600">
+          <p className="font-semibold">Error loading users</p>
+          <p className="text-sm mt-2">{error}</p>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -383,7 +452,10 @@ const UsersTab = ({ onNavigateToTab }) => {
                               View Details
                             </button>
                             <button
-                              onClick={() => handleResetPassword(user)}
+                              onClick={() => {
+                                setShowResetPasswordConfirm(user.id);
+                                setShowActionMenu(null);
+                              }}
                               className="w-full flex items-center px-4 py-3 hover:bg-slate-50 text-left text-sm text-slate-700 transition-colors"
                             >
                               <Key className="w-4 h-4 mr-3" />
@@ -391,7 +463,10 @@ const UsersTab = ({ onNavigateToTab }) => {
                             </button>
                             {user.status === 'Active' ? (
                               <button
-                                onClick={() => handleSuspendUser(user.id)}
+                                onClick={() => {
+                                  setShowSuspendConfirm(user.id);
+                                  setShowActionMenu(null);
+                                }}
                                 className="w-full flex items-center px-4 py-3 hover:bg-orange-50 text-left text-sm text-orange-600 transition-colors"
                               >
                                 <Ban className="w-4 h-4 mr-3" />
@@ -399,7 +474,10 @@ const UsersTab = ({ onNavigateToTab }) => {
                               </button>
                             ) : (
                               <button
-                                onClick={() => handleActivateUser(user.id)}
+                                onClick={() => {
+                                  setShowActivateConfirm(user.id);
+                                  setShowActionMenu(null);
+                                }}
                                 className="w-full flex items-center px-4 py-3 hover:bg-green-50 text-left text-sm text-green-600 transition-colors"
                               >
                                 <CheckCircle className="w-4 h-4 mr-3" />
@@ -463,10 +541,10 @@ const UsersTab = ({ onNavigateToTab }) => {
         </div>
       )}
 
-      {/* User Modal Placeholder */}
+      {/* User Modal */}
       {showUserModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <Card className="max-w-2xl w-full p-6">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <Card className="max-w-2xl w-full p-6 my-8 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-slate-900">
                 {selectedUser ? 'User Details' : 'Add New User'}
@@ -482,7 +560,78 @@ const UsersTab = ({ onNavigateToTab }) => {
               </button>
             </div>
 
-            {selectedUser && (
+            {!selectedUser ? (
+              /* Add New User Form */
+              <div className="space-y-4">
+                <p className="text-slate-600 text-sm mb-4">
+                  Add a new coach or admin to the system. For parent accounts, they should register through the session enrollment process.
+                </p>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <Input
+                    label="First Name"
+                    placeholder="Enter first name"
+                    required
+                  />
+                  <Input
+                    label="Last Name"
+                    placeholder="Enter last name"
+                    required
+                  />
+                </div>
+
+                <Input
+                  label="Email Address"
+                  type="email"
+                  placeholder="user@example.com"
+                  required
+                />
+
+                <Input
+                  label="Phone Number"
+                  type="tel"
+                  placeholder="(210) 555-1234"
+                />
+
+                <Select
+                  label="Role"
+                  options={[
+                    { value: 'coach', label: 'Coach' },
+                    { value: 'admin', label: 'Admin' }
+                  ]}
+                  required
+                />
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4">
+                  <p className="text-sm text-blue-800">
+                    <strong>Note:</strong> A temporary password will be generated and sent to the user's email address. They will be required to change it on first login.
+                  </p>
+                </div>
+
+                <div className="flex gap-3 mt-6">
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setShowUserModal(false);
+                      setSelectedUser(null);
+                    }}
+                    fullWidth
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    fullWidth
+                    onClick={() => {
+                      // TODO: Implement create user functionality
+                      alert('Create user functionality coming soon!');
+                    }}
+                  >
+                    Create User
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              /* User Details View */
               <div className="space-y-4">
                 <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-lg">
                   <div className={`w-16 h-16 rounded-full flex items-center justify-center font-bold text-white text-xl ${
@@ -510,34 +659,20 @@ const UsersTab = ({ onNavigateToTab }) => {
                     <p className="text-sm text-slate-600 mb-1">Last Login</p>
                     <p className="font-semibold text-slate-900">{formatDate(selectedUser.lastLogin)}</p>
                   </div>
-                  <div className="p-4 bg-slate-50 rounded-lg">
-                    <p className="text-sm text-slate-600 mb-1">Total Logins</p>
-                    <p className="font-semibold text-slate-900">{selectedUser.loginCount}</p>
-                  </div>
-                  <div className="p-4 bg-slate-50 rounded-lg">
-                    <p className="text-sm text-slate-600 mb-1">Subscriptions</p>
-                    <p className="font-semibold text-slate-900">
-                      {selectedUser.subscriptions > 0 ? `${selectedUser.subscriptions} active` : 'None'}
-                    </p>
-                  </div>
                 </div>
 
-                <p className="text-sm text-slate-500 italic">
-                  Full user detail modal with tabs coming next!
-                </p>
+                <Button
+                  onClick={() => {
+                    setShowUserModal(false);
+                    setSelectedUser(null);
+                  }}
+                  fullWidth
+                  className="mt-6"
+                >
+                  Close
+                </Button>
               </div>
             )}
-
-            <Button
-              onClick={() => {
-                setShowUserModal(false);
-                setSelectedUser(null);
-              }}
-              fullWidth
-              className="mt-6"
-            >
-              Close
-            </Button>
           </Card>
         </div>
       )}
@@ -549,6 +684,42 @@ const UsersTab = ({ onNavigateToTab }) => {
           onClick={() => setShowActionMenu(null)}
         />
       )}
+
+      {/* Suspend Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showSuspendConfirm !== null}
+        onClose={() => setShowSuspendConfirm(null)}
+        onConfirm={() => handleSuspendUser(showSuspendConfirm)}
+        title="Suspend User Account"
+        message="Are you sure you want to suspend this user's account? They will no longer be able to access the platform until reactivated."
+        confirmText="Suspend Account"
+        cancelText="Cancel"
+        variant="danger"
+      />
+
+      {/* Activate Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showActivateConfirm !== null}
+        onClose={() => setShowActivateConfirm(null)}
+        onConfirm={() => handleActivateUser(showActivateConfirm)}
+        title="Activate User Account"
+        message="Are you sure you want to activate this user's account? They will regain full access to the platform."
+        confirmText="Activate Account"
+        cancelText="Cancel"
+        variant="primary"
+      />
+
+      {/* Reset Password Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showResetPasswordConfirm !== null}
+        onClose={() => setShowResetPasswordConfirm(null)}
+        onConfirm={() => handleResetPassword(showResetPasswordConfirm)}
+        title="Reset User Password"
+        message="Are you sure you want to send a password reset email to this user? They will receive an email with instructions to create a new password."
+        confirmText="Send Reset Email"
+        cancelText="Cancel"
+        variant="primary"
+      />
     </div>
   );
 };

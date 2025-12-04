@@ -61,7 +61,7 @@ export const authService = {
     try {
       await apiClient.post('/auth/logout', { refreshToken });
     } catch (error) {
-      console.error('Logout error:', error);
+      // Silent fail - tokens will be cleared regardless
     } finally {
       apiClient.clearTokens();
     }

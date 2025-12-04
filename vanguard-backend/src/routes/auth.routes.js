@@ -17,10 +17,10 @@ const registerValidation = [
     .normalizeEmail()
     .withMessage('Must be a valid email address'),
   body('password')
-    .isLength({ min: 6 })
-    .withMessage('Password must be at least 6 characters long')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
-    .withMessage('Password must contain at least one uppercase letter, one lowercase letter, and one number'),
+    .isLength({ min: 12 })
+    .withMessage('Password must be at least 12 characters long')
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/)
+    .withMessage('Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character (@$!%*?&)'),
   body('firstName')
     .trim()
     .isLength({ min: 2 })
@@ -52,10 +52,21 @@ const changePasswordValidation = [
     .notEmpty()
     .withMessage('Current password is required'),
   body('newPassword')
-    .isLength({ min: 6 })
-    .withMessage('New password must be at least 6 characters long')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
-    .withMessage('New password must contain at least one uppercase letter, one lowercase letter, and one number'),
+    .isLength({ min: 12 })
+    .withMessage('New password must be at least 12 characters long')
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/)
+    .withMessage('New password must contain at least one uppercase letter, one lowercase letter, one number, and one special character (@$!%*?&)'),
+];
+
+// Refresh token validation rules
+const refreshTokenValidation = [
+  body('refreshToken')
+    .notEmpty()
+    .withMessage('Refresh token is required')
+    .isString()
+    .withMessage('Refresh token must be a string')
+    .isLength({ min: 20 })
+    .withMessage('Invalid refresh token format'),
 ];
 
 /**
@@ -77,7 +88,7 @@ router.post('/login', loginValidation, validate, authController.login);
  * @desc    Refresh access token
  * @access  Public
  */
-router.post('/refresh', authController.refresh);
+router.post('/refresh', refreshTokenValidation, validate, authController.refresh);
 
 /**
  * @route   POST /api/auth/logout

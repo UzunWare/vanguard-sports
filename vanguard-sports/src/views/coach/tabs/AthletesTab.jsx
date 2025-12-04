@@ -5,7 +5,6 @@ import Badge from '../../../components/ui/Badge';
 import Input from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
 import { calculateAttendancePercentage } from '../../../utils/calculations';
-import { generateMockAthleteProfile } from '../../../data/mockData';
 
 /**
  * AthletesTab Component
@@ -55,7 +54,24 @@ const AthletesTab = ({ sessions, rosters, user, onNavigateToEvaluations }) => {
 
   // Handle athlete click
   const handleAthleteClick = (athlete) => {
-    const fullProfile = generateMockAthleteProfile(athlete);
+    // Build full profile from real athlete data
+    const fullProfile = {
+      ...athlete,
+      attendanceRate: athlete.attendanceRate || 0,
+      evaluationCount: 0, // TODO: Get from backend
+      lastEvaluation: 'Not evaluated yet',
+      emergencyContacts: athlete.emergencyContacts || [
+        {
+          id: 'ec1',
+          name: athlete.parent,
+          phone: athlete.phone,
+          relationship: 'Parent',
+          isPrimary: true
+        }
+      ],
+      attendanceHistory: [], // TODO: Get from backend
+      medicalHistory: []
+    };
     setSelectedAthlete(fullProfile);
   };
 
@@ -173,7 +189,7 @@ const AthletesTab = ({ sessions, rosters, user, onNavigateToEvaluations }) => {
         // Grid View
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredAthletes.map((athlete) => {
-            const attendanceRate = 85; // Mock - would be calculated from real data
+            const attendanceRate = athlete.attendanceRate || 0;
             const attendanceBadge = getAttendanceBadge(attendanceRate);
             const hasMedical = athlete.medical && athlete.medical !== 'None';
 
@@ -261,7 +277,7 @@ const AthletesTab = ({ sessions, rosters, user, onNavigateToEvaluations }) => {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredAthletes.map((athlete) => {
-                const attendanceRate = 85;
+                const attendanceRate = athlete.attendanceRate || 0;
                 const attendanceBadge = getAttendanceBadge(attendanceRate);
                 const hasMedical = athlete.medical && athlete.medical !== 'None';
 

@@ -46,10 +46,7 @@ const runSeeds = async () => {
     }
 
     console.log('✅ All seeds completed successfully!\n');
-    console.log('📝 Test credentials:');
-    console.log('   Admin:  admin@vanguard.com / admin123');
-    console.log('   Coach:  ugur@vanguard.com / coach123');
-    console.log('   Parent: parent@vanguard.com / parent123\n');
+    console.log('📝 Test users created successfully. Check seed files for login details.\n');
   } catch (error) {
     console.error('❌ Seeding failed:', error.message);
     process.exit(1);

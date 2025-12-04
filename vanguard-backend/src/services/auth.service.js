@@ -72,7 +72,7 @@ const login = async (email, password) => {
   try {
     // Find user
     const result = await db.query(
-      `SELECT id, email, password_hash, first_name, last_name, phone, role, status
+      `SELECT id, email, password_hash, first_name, last_name, phone, role, status, require_password_change
        FROM users
        WHERE email = $1`,
       [email]
@@ -129,6 +129,7 @@ const login = async (email, password) => {
         phone: user.phone,
         role: user.role,
         status: user.status,
+        requirePasswordChange: user.require_password_change || false,
       },
       accessToken,
       refreshToken,
@@ -302,9 +303,9 @@ const changePassword = async (userId, currentPassword, newPassword) => {
     const saltRounds = 10;
     const newPasswordHash = await bcrypt.hash(newPassword, saltRounds);
 
-    // Update password
+    // Update password and clear require_password_change flag
     await db.query(
-      'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      'UPDATE users SET password_hash = $1, require_password_change = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
       [newPasswordHash, userId]
     );
 
@@ -318,10 +319,109 @@ const changePassword = async (userId, currentPassword, newPassword) => {
   }
 };
 
+/**
+ * Generate secure temporary password
+ * Format: Capital + lowercase + numbers + special char (12 chars)
+ * Example: Vg8@mKx2nPq9
+ */
+const generateTemporaryPassword = () => {
+  const uppercase = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lowercase = 'abcdefghjkmnpqrstuvwxyz';
+  const numbers = '23456789';
+  const special = '!@#$%^&*';
+
+  const password = [
+    uppercase[Math.floor(Math.random() * uppercase.length)],
+    uppercase[Math.floor(Math.random() * uppercase.length)],
+    lowercase[Math.floor(Math.random() * lowercase.length)],
+    lowercase[Math.floor(Math.random() * lowercase.length)],
+    lowercase[Math.floor(Math.random() * lowercase.length)],
+    numbers[Math.floor(Math.random() * numbers.length)],
+    numbers[Math.floor(Math.random() * numbers.length)],
+    numbers[Math.floor(Math.random() * numbers.length)],
+    special[Math.floor(Math.random() * special.length)],
+    lowercase[Math.floor(Math.random() * lowercase.length)],
+    lowercase[Math.floor(Math.random() * lowercase.length)],
+    numbers[Math.floor(Math.random() * numbers.length)]
+  ];
+
+  // Shuffle to make it more random
+  return password.sort(() => Math.random() - 0.5).join('');
+};
+
+/**
+ * Create parent account with temporary password (for enrollment auto-creation)
+ * @param {Object} parentData - Parent information
+ * @returns {Promise<Object>} Created user and temporary password
+ */
+const createParentAccountWithTempPassword = async (parentData) => {
+  const { email, firstName, lastName, phone } = parentData;
+
+  try {
+    // Check if user already exists
+    const existingUser = await db.query(
+      'SELECT id, email, first_name, last_name FROM users WHERE email = $1',
+      [email]
+    );
+
+    if (existingUser.rows.length > 0) {
+      // User already exists, return existing user info without password
+      const user = existingUser.rows[0];
+      return {
+        isNewAccount: false,
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.first_name,
+          lastName: user.last_name,
+        }
+      };
+    }
+
+    // Generate temporary password
+    const temporaryPassword = generateTemporaryPassword();
+
+    // Hash password
+    const saltRounds = 10;
+    const passwordHash = await bcrypt.hash(temporaryPassword, saltRounds);
+
+    // Insert new user with require_password_change flag
+    const result = await db.query(
+      `INSERT INTO users (email, password_hash, first_name, last_name, phone, role, require_password_change)
+       VALUES ($1, $2, $3, $4, $5, $6, true)
+       RETURNING id, email, first_name, last_name, phone, role, status, created_at`,
+      [email, passwordHash, firstName, lastName, phone, 'parent']
+    );
+
+    const user = result.rows[0];
+    logger.info(`New parent account auto-created during enrollment: ${email}`);
+
+    return {
+      isNewAccount: true,
+      temporaryPassword,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        phone: user.phone,
+        role: user.role,
+        status: user.status,
+        createdAt: user.created_at,
+      }
+    };
+  } catch (error) {
+    logger.error('Auto-create parent account error:', error.message);
+    throw error;
+  }
+};
+
 module.exports = {
   register,
   login,
   refreshAccessToken,
   logout,
   changePassword,
+  generateTemporaryPassword,
+  createParentAccountWithTempPassword,
 };

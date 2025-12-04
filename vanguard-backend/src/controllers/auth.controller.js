@@ -1,4 +1,5 @@
 const authService = require('../services/auth.service');
+const emailService = require('../services/email.service');
 const logger = require('../utils/logger');
 
 /**
@@ -21,6 +22,13 @@ const register = async (req, res, next) => {
       lastName,
       phone,
     });
+
+    // Send welcome email (don't await - send in background)
+    emailService.sendWelcomeEmail({
+      email,
+      firstName,
+      lastName,
+    }).catch(err => logger.error('Failed to send welcome email:', err));
 
     // Auto-login after registration
     const loginResult = await authService.login(email, password);
@@ -115,6 +123,12 @@ const changePassword = async (req, res, next) => {
     const userId = req.user.id;
 
     await authService.changePassword(userId, currentPassword, newPassword);
+
+    // Send password change notification email (in background)
+    emailService.sendPasswordChangeEmail({
+      email: req.user.email,
+      firstName: req.user.first_name,
+    }).catch(err => logger.error('Failed to send password change email:', err));
 
     res.status(200).json({
       message: 'Password changed successfully',

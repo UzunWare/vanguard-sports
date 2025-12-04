@@ -1,20 +1,72 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { DollarSign, Users, TrendingUp, Activity, Calendar, Plus, FileText, Settings, Mail, UserPlus, CreditCard, XCircle } from 'lucide-react';
 import Card from '../../../components/ui/Card';
 import Badge from '../../../components/ui/Badge';
 import Button from '../../../components/ui/Button';
 import { formatCurrency } from '../../../utils/formatters';
-import { generateAdminMetrics, generateMonthlyRevenue, generateRecentActivity } from '../../../data/mockData';
+import adminService from '../../../services/adminService';
 
 /**
  * OverviewTab Component
  * Admin dashboard overview with metrics, charts, and activity feed
  */
-const OverviewTab = ({ onNavigateToTab }) => {
-  // Generate metrics and data
-  const metrics = useMemo(() => generateAdminMetrics(), []);
-  const revenueData = useMemo(() => generateMonthlyRevenue(), []);
-  const activities = useMemo(() => generateRecentActivity(20), []);
+const OverviewTab = ({ onNavigateToTab, sessions = [] }) => {
+  const [revenueData, setRevenueData] = useState([]);
+  const [activities, setActivities] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  // Calculate metrics from real session data
+  const metrics = useMemo(() => {
+    const totalAthletes = sessions.reduce((sum, session) => sum + (session.registeredCount || 0), 0);
+    const totalRevenue = sessions.reduce((sum, session) => {
+      const enrollments = session.registeredCount || 0;
+      return sum + (enrollments * (session.price + session.regFee));
+    }, 0);
+
+    return {
+      totalRevenue,
+      revenueGrowth: 0,
+      activeSubscriptions: totalAthletes,
+      newSubscriptionsThisWeek: 0,
+      totalAthletes,
+      totalSessions: sessions.length,
+      churnRate: 0,
+      churnChange: 0,
+      pendingApprovals: 0
+    };
+  }, [sessions]);
+
+  // Fetch monthly revenue trend data
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      setLoading(true);
+      try {
+        const trend = await adminService.getMonthlyRevenueTrend();
+
+        // Transform backend data to frontend format
+        if (trend && Array.isArray(trend)) {
+          const maxRevenue = Math.max(...trend.map(t => t.revenue));
+          const transformedData = trend.map(item => ({
+            month: item.month_label || item.month, // e.g., "Jan", "Feb"
+            amount: item.revenue || 0,
+            percentage: maxRevenue > 0 ? Math.round((item.revenue / maxRevenue) * 100) : 0
+          }));
+          setRevenueData(transformedData);
+        }
+
+        // Activities will be fetched from activity tracking endpoint (TODO)
+        setActivities([]);
+      } catch (error) {
+        console.error('Failed to load dashboard data:', error);
+        setRevenueData([]);
+        setActivities([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
 
   // Format time ago
   const formatTimeAgo = (timestamp) => {
@@ -120,54 +172,70 @@ const OverviewTab = ({ onNavigateToTab }) => {
         {/* Revenue Chart */}
         <Card className="p-6">
           <h3 className="font-bold text-slate-900 mb-4 text-lg">Monthly Revenue Trend</h3>
-          <div className="space-y-3">
-            {revenueData.map((month) => (
-              <div key={month.month} className="flex items-center gap-4">
-                <span className="w-12 text-sm font-semibold text-slate-600">{month.month}</span>
-                <div className="flex-1 h-10 bg-slate-100 rounded-lg overflow-hidden relative group">
-                  <div
-                    className="h-full bg-gradient-to-r from-blue-500 to-purple-600 transition-all duration-500 flex items-center justify-end pr-3"
-                    style={{ width: `${month.percentage}%` }}
-                  >
-                    <span className="text-white text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-                      {formatCurrency(month.amount)}
-                    </span>
+          {revenueData.length > 0 ? (
+            <div className="space-y-3">
+              {revenueData.map((month) => (
+                <div key={month.month} className="flex items-center gap-4">
+                  <span className="w-12 text-sm font-semibold text-slate-600">{month.month}</span>
+                  <div className="flex-1 h-10 bg-slate-100 rounded-lg overflow-hidden relative group">
+                    <div
+                      className="h-full bg-gradient-to-r from-blue-500 to-purple-600 transition-all duration-500 flex items-center justify-end pr-3"
+                      style={{ width: `${month.percentage}%` }}
+                    >
+                      <span className="text-white text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity">
+                        {formatCurrency(month.amount)}
+                      </span>
+                    </div>
                   </div>
+                  <span className="w-24 text-right font-bold text-slate-900 text-sm">
+                    {formatCurrency(month.amount)}
+                  </span>
                 </div>
-                <span className="w-24 text-right font-bold text-slate-900 text-sm">
-                  {formatCurrency(month.amount)}
-                </span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 text-slate-400">
+              <TrendingUp size={48} className="mx-auto mb-3 opacity-30" />
+              <p className="text-sm">No revenue data available yet</p>
+              <p className="text-xs mt-1">Data will appear as enrollments are processed</p>
+            </div>
+          )}
         </Card>
 
         {/* Recent Activity Feed */}
         <Card className="p-6">
           <h3 className="font-bold text-slate-900 mb-4 text-lg">Recent Activity</h3>
-          <div className="space-y-3 max-h-[480px] overflow-y-auto pr-2">
-            {activities.map((activity) => {
-              const Icon = getActivityIcon(activity.icon);
-              const colorClass = getActivityColor(activity.color);
+          {activities.length > 0 ? (
+            <div className="space-y-3 max-h-[480px] overflow-y-auto pr-2">
+              {activities.map((activity) => {
+                const Icon = getActivityIcon(activity.icon);
+                const colorClass = getActivityColor(activity.color);
 
-              return (
-                <div
-                  key={activity.id}
-                  className="flex items-start gap-3 p-3 rounded-lg hover:bg-slate-50 transition-colors"
-                >
-                  <div className={`p-2 rounded-lg flex-shrink-0 ${colorClass}`}>
-                    <Icon size={16} />
+                return (
+                  <div
+                    key={activity.id}
+                    className="flex items-start gap-3 p-3 rounded-lg hover:bg-slate-50 transition-colors"
+                  >
+                    <div className={`p-2 rounded-lg flex-shrink-0 ${colorClass}`}>
+                      <Icon size={16} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-slate-900">{activity.message}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {formatTimeAgo(activity.timestamp)}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-slate-900">{activity.message}</p>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      {formatTimeAgo(activity.timestamp)}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-12 text-slate-400">
+              <Activity size={48} className="mx-auto mb-3 opacity-30" />
+              <p className="text-sm">No recent activity</p>
+              <p className="text-xs mt-1">Activity will appear as users interact with the platform</p>
+            </div>
+          )}
         </Card>
       </div>
 
