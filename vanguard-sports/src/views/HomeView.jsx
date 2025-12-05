@@ -49,6 +49,7 @@ const HomeView = ({ setView, scrollToSection, refs, sessions, setSelectedProgram
   const [isSubmittingContact, setIsSubmittingContact] = useState(false);
   const [isSubmittingNewsletter, setIsSubmittingNewsletter] = useState(false);
   const [contactFormSubmitted, setContactFormSubmitted] = useState(false);
+  const [newsletterSubscribed, setNewsletterSubscribed] = useState(false);
 
   const filteredSessions = activeTab === 'All' ? sessions : sessions.filter(s => s.sport === activeTab);
 
@@ -172,11 +173,13 @@ const HomeView = ({ setView, scrollToSection, refs, sessions, setSelectedProgram
       setIsSubmittingNewsletter(true);
       try {
         await contactService.subscribeNewsletter(newsletterEmail);
+        // Mark as subscribed and collapse the form
+        setNewsletterSubscribed(true);
         showNotification('Successfully subscribed to newsletter! Check your email for confirmation.');
         setNewsletterEmail('');
         setNewsletterTouched(false);
       } catch (error) {
-        showNotification('Failed to subscribe. Please try again later.');
+        showNotification('Failed to subscribe. Please try again later.', 'error');
       } finally {
         setIsSubmittingNewsletter(false);
       }
@@ -650,44 +653,60 @@ const HomeView = ({ setView, scrollToSection, refs, sessions, setSelectedProgram
 
               {/* Newsletter Signup */}
               <div className="bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl p-8 text-white">
-                <h3 className="text-2xl font-bold mb-2">Stay Updated</h3>
-                <p className="text-blue-100 mb-6 text-sm">Get the latest news on classes and events.</p>
-                <form className="space-y-3" onSubmit={handleNewsletterSubmit}>
-                  <div>
-                    <input
-                      type="email"
-                      value={newsletterEmail}
-                      onChange={(e) => handleNewsletterChange(e.target.value)}
-                      onBlur={handleNewsletterBlur}
-                      placeholder="Your email address"
-                      disabled={isSubmittingNewsletter}
-                      className={`w-full px-4 py-3 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 ${
-                        newsletterTouched && newsletterError
-                          ? 'ring-2 ring-red-300 border-red-400'
-                          : 'focus:ring-white'
-                      } ${isSubmittingNewsletter ? 'opacity-60 cursor-not-allowed' : ''}`}
-                    />
-                    {newsletterTouched && newsletterError && (
-                      <p className="text-xs font-bold text-red-200 mt-2 flex items-center gap-1">
-                        <Info size={10} /> {newsletterError}
-                      </p>
-                    )}
+                {newsletterSubscribed ? (
+                  /* Success Message */
+                  <div className="text-center py-4 animate-fade-in">
+                    <div className="inline-flex items-center justify-center w-16 h-16 bg-white/20 backdrop-blur-sm rounded-full mb-4">
+                      <CheckCircle size={32} className="text-white" />
+                    </div>
+                    <h3 className="text-2xl font-bold mb-2">You're All Set!</h3>
+                    <p className="text-blue-100 text-sm">
+                      Thank you for subscribing to our newsletter. We'll keep you updated on the latest news, classes, and events.
+                    </p>
                   </div>
-                  <label className="flex items-center gap-2 text-sm text-blue-100">
-                    <input type="checkbox" className="rounded" disabled={isSubmittingNewsletter} />
-                    Subscribe to newsletter
-                  </label>
-                  <Button type="submit" disabled={isSubmittingNewsletter} className="w-full !bg-white !text-blue-600 hover:!bg-blue-50">
-                    {isSubmittingNewsletter ? (
-                      <>
-                        <Loader className="animate-spin" size={18} />
-                        <span className="ml-2">Subscribing...</span>
-                      </>
-                    ) : (
-                      'Subscribe'
-                    )}
-                  </Button>
-                </form>
+                ) : (
+                  /* Newsletter Form */
+                  <>
+                    <h3 className="text-2xl font-bold mb-2">Stay Updated</h3>
+                    <p className="text-blue-100 mb-6 text-sm">Get the latest news on classes and events.</p>
+                    <form className="space-y-3" onSubmit={handleNewsletterSubmit}>
+                      <div>
+                        <input
+                          type="email"
+                          value={newsletterEmail}
+                          onChange={(e) => handleNewsletterChange(e.target.value)}
+                          onBlur={handleNewsletterBlur}
+                          placeholder="Your email address"
+                          disabled={isSubmittingNewsletter}
+                          className={`w-full px-4 py-3 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 ${
+                            newsletterTouched && newsletterError
+                              ? 'ring-2 ring-red-300 border-red-400'
+                              : 'focus:ring-white'
+                          } ${isSubmittingNewsletter ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        />
+                        {newsletterTouched && newsletterError && (
+                          <p className="text-xs font-bold text-red-200 mt-2 flex items-center gap-1">
+                            <Info size={10} /> {newsletterError}
+                          </p>
+                        )}
+                      </div>
+                      <label className="flex items-center gap-2 text-sm text-blue-100">
+                        <input type="checkbox" className="rounded" disabled={isSubmittingNewsletter} />
+                        Subscribe to newsletter
+                      </label>
+                      <Button type="submit" disabled={isSubmittingNewsletter} className="w-full !bg-white !text-blue-600 hover:!bg-blue-50">
+                        {isSubmittingNewsletter ? (
+                          <>
+                            <Loader className="animate-spin" size={18} />
+                            <span className="ml-2">Subscribing...</span>
+                          </>
+                        ) : (
+                          'Subscribe'
+                        )}
+                      </Button>
+                    </form>
+                  </>
+                )}
               </div>
             </div>
 
